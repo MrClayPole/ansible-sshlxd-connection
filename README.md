@@ -1,11 +1,6 @@
 # WHY FORKED?
 
-This plugin is the same as https://github.com/antifuchs/ansible-sshlxd-connection
-without a couple of lines.
-The reason is the plugin don't work fine with "becomes" in container.
-In this fork I asume the ssh user have permissions to run lxd. This way,
-I can compose sudoable commands in the container.
-
+I've hardcoded the path to lxc bin for the snap version of LXD. It gets it working for me but this is a hack and there is likley a much better way of fixing this. If there are any python devs them let me know the proper way to fix this for the snap version of LXD.
 
 # ansible-sshlxd-connection
 
