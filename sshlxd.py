@@ -246,7 +246,7 @@ class Connection(ConnectionBase):
         return self.containerspec
 
     def get_container_connector(self):
-        return 'lxc'
+        return '/snap/bin/lxc'
 
     def _strip_sudo(self, executable, cmd):
         # Get the command without sudo
