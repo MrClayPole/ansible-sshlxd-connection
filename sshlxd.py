@@ -1,8 +1,6 @@
 from __future__ import (absolute_import, division, print_function)
-
 import os
 import os.path
-import sys
 import pipes
 
 from ansible.errors import AnsibleError
@@ -11,26 +9,21 @@ from contextlib import contextmanager
 
 __metaclass__ = type
 
-try:
-    from __main__ import display
-except ImportError:
-    from ansible.utils.display import Display
-    display = Display()
-
 DOCUMENTATION = '''
-    connection: sshlxd
-    short_description: connect via ssh client binary to lxd container
+    connection: ssh
+    short_description: connect to LXD containers using lxc comand via ssh client binary
     description:
-        - This connection plugin allows ansible to communicate to the target machines via normal ssh command line.
-    author: aizquierdo, forked from Austin Hyde (@austinhyde)
+        - Use the ssh client library to access the LXD host and then use lxc commands to interact with the container.
+        - Options are the same as ssh, except got host variable wich should be <container_name>@<host>
+    author: Andreas Fuchs (@antifuchs), Joao Silva(@wnke)
     version_added: historical
     options:
       host:
           description: Hostname/ip to connect to.
           default: inventory_hostname
           vars:
-               - name: ansible_host
-               - name: ansible_ssh_host
+               - name: container@ansible_host
+               - name: container@ansible_ssh_host
       host_key_checking:
           description: Determines if ssh should check host keys
           type: boolean
@@ -173,7 +166,6 @@ DOCUMENTATION = '''
           vars:
             - name: ansible_private_key_file
             - name: ansible_ssh_private_key_file
-
       control_path:
         description:
           - This is the location to save ssh's ControlPath sockets, it uses ssh's variable substitution.
@@ -220,6 +212,14 @@ DOCUMENTATION = '''
         yaml: {key: connection.usetty}
 '''
 
+
+try:
+    from __main__ import display
+except ImportError:
+    from ansible.utils.display import Display
+    display = Display()
+
+
 class ConnectionBase(SSHConnection):
     pass
 
@@ -227,20 +227,15 @@ class ConnectionBase(SSHConnection):
 class Connection(ConnectionBase):
     ''' ssh based connections '''
 
-    transport = 'sshlxc'
+    transport = 'sshlxd'
 
     def __init__(self, *args, **kwargs):
         super(Connection, self).__init__(*args, **kwargs)
-        # self.host == containername@containerhost
+
         self.inventory_hostname = self.host
         self.containerspec, self.host = self.host.split('@', 1)
-        # self.containerspec == containername
-        # self.host == containerhost
-        # this way SSHConnection parent class uses the containerhost as the SSH remote host
 
         self.connector = None
-
-        # logging.warning(self._play_context.connection)
 
     def get_container_id(self):
         return self.containerspec
@@ -254,25 +249,21 @@ class Connection(ConnectionBase):
         # Get the quotes
         quotes = sudoless.partition('echo')[0]
         # Get the string between the quotes
-        cmd = sudoless[len(quotes):-len(quotes+'?')]
-        # Drop the first command becasue we don't need it
-        #cmd = cmd.split('; ', 1)[1]
+        cmd = sudoless[len(quotes):-len(quotes + '?')]
         return cmd
 
     def host_command(self, cmd, do_become=False):
-        # if self._play_context.become and do_become:
-        #     cmd = self._play_context.make_become_cmd(cmd)
+        if self._play_context.become and do_become:
+            cmd = self._play_context.make_become_cmd(cmd)
         return super(Connection, self).exec_command(cmd, in_data=None, sudoable=True)
 
     def exec_command(self, cmd, in_data=None, executable='/bin/sh', sudoable=True):
         ''' run a command in the container '''
-        # if self._play_context.become:
-        #     # display.debug("_low_level_execute_command(): using become for this command")
-        #     cmd = self._play_context.make_become_cmd(cmd)
+
         cmd = '%s exec %s -- %s' % (self.get_container_connector(), self.get_container_id(), cmd)
+        if self._play_context.become:
+            cmd = self._play_context.make_become_cmd(cmd)
 
-
-        # display.vvv("CONTAINER (%s) %s" % (local_cmd), host=self.host)
         return super(Connection, self).exec_command(cmd, in_data, True)
 
     def container_path(self, path):
@@ -281,11 +272,9 @@ class Connection(ConnectionBase):
     @contextmanager
     def tempfile(self):
         code, stdout, stderr = self.host_command('mktemp')
-        if sys.version_info.major == 3:
-            stdout = stdout.decode('utf-8')
         if code != 0:
             raise AnsibleError("failed to make temp file:\n%s\n%s" % (stdout, stderr))
-        tmp = stdout.strip().split('\n')[-1]
+        tmp = stdout.strip().decode('utf-8').split('\n')[-1]
 
         yield tmp
 
@@ -297,13 +286,13 @@ class Connection(ConnectionBase):
         ''' transfer a file from local to remote container '''
         with self.tempfile() as tmp:
             super(Connection, self).put_file(in_path, tmp)
-            self.host_command(' '.join(['lxc', 'exec', self.get_container_id(), '--', 'mkdir', '-p', os.path.dirname(out_path)]), do_become=True)
-            self.host_command(' '.join(['lxc', 'file', 'push', '--debug', tmp, self.container_path(out_path)]), do_become=True)
+            self.host_command(' '.join(['/snap/bin/lxc', 'exec', self.get_container_id(), '--', 'mkdir', '-p', os.path.dirname(out_path)]), do_become=True)
+            self.host_command(' '.join(['/snap/bin/lxc', 'file', 'push', '--debug', tmp, self.container_path(out_path)]), do_become=True)
 
     def fetch_file(self, in_path, out_path):
         ''' fetch a file from remote to local '''
         with self.tempfile() as tmp:
-            self.host_command(' '.join(['lxc', 'file', 'pull', self.container_path(in_path), tmp]), do_become=True)
+            self.host_command(' '.join(['/snap/bin/lxc', 'file', 'pull', self.container_path(in_path), tmp]), do_become=True)
             super(Connection, self).fetch_file(tmp, out_path)
 
     def close(self):
