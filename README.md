@@ -28,11 +28,11 @@ Host:
 * LXD, tested with the version Ubuntu Xenial ships with
 * SSH
 * Sudo
-* Ansible 2.0's dependencies (that's probably python 2.7)
+* Ansible 2.x dependencies 
 
 LXD container:
 
-* Ansible 2.0's dependencies (that's probably python 2.7 again)
+* Ansible 2.x dependencies
 
 ## Installing
 
